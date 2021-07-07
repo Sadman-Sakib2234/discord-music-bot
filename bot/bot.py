@@ -14,53 +14,59 @@ class Musicbot(commands.Bot):
         ) # case_insensitive=True means play and Play are the same thing
 
     def setup(self):
-        print("Setup Running...")
-        
+        print("Running setup...")
+
         for cog in self._cogs:
             self.load_extension(f"bot.cogs.{cog}")
-            print(f"Loaded `{cog}` cog.")
-        
-        print("Setup Completed.")
-    
+            print(f" Loaded `{cog}` cog.")
+
+        print("Setup complete.")
+
     def run(self):
         self.setup()
 
         with open("data/token.0", "r", encoding="utf-8") as f:
             TOKEN = f.read()
 
-        print("Running Bot...")
+        print("Running bot...")
         super().run(TOKEN, reconnect=True)
-    
-    async def shutdown(slef):
-        print("Closing connection To Discord...")
+
+    async def shutdown(self):
+        print("Closing connection to Discord...")
         await super().close()
 
     async def close(self):
-        print("Closing On Keyboard Interrupt...")
-        await super().shutdown()
-    
-    async def on_connect(self):
-        print(f"Connect to Discord (latency: {self.latency*1000} ms.")
+        print("Closing on keyboard interrupt...")
+        await self.shutdown()
 
-    async def on_resume(self):
-        print("Bot Resumed.")
-    
+    async def on_connect(self):
+        print(f" Connected to Discord (latency: {self.latency*1000:,.0f} ms).")
+
+    async def on_resumed(self):
+        print("Bot resumed.")
+
     async def on_disconnect(self):
-        print("Bot Disconnected.")
+        print("Bot disconnected.")
+    
+    # async def on_error(self, err, *args, **kwargs):
+    #     raise
+
+    # async def on_command_error(self, ctx, exc):
+    #     raise getattr(exc, "original", exc)
 
     async def on_ready(self):
         self.client_id = (await self.application_info()).id
-        print("Bot Ready.")
-    
+        print("Bot ready.")
+
     async def prefix(self, bot, msg):
         return commands.when_mentioned_or("+")(bot, msg)
 
     async def process_commands(self, msg):
         ctx = await self.get_context(msg, cls=commands.Context)
 
-        if ctx.command is not None: 
-           await self.invoke(ctx) 
-    
+        if ctx.command is not None:
+            await self.invoke(ctx)
+
     async def on_message(self, msg):
         if not msg.author.bot:
             await self.process_commands(msg)
