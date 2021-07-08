@@ -8,3 +8,4 @@ inco is an opensource music bot written in python. it can play music give lyrics
 | -------- | ---------- |
 | connect channel     | +connect     |
 | disconnect channel | +disconnect       |
+| play using yt url | +play < url >
