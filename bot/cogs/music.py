@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import random
 import re
 import typing as t
 
@@ -97,6 +98,15 @@ class Queue:
             return None
         
         return self._queue[self.position]
+    
+    def shuffle(self):
+        if not self._queue:
+            raise QueueIsEmpty
+
+        upcoming = self.upcoming
+        random.shuffle(upcoming)
+        self._queue = self._queue[:self.position + 1]
+        self._queue.extend(upcoming)
     
     def empty(self):
         self._queue.clear()        
@@ -330,19 +340,23 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
 
     @previous_command.error
     async def previous_command_error(self, ctx, exc):
-        if isinstance(exc, QueueIsEmpty):
-            await ctx.send("This could not be executed as the queue is currently empty.")
-        elif isinstance(exc, NoPreviousTracks):
-            await ctx.send("There are no previous tracks in the queue.")
-
-
-    @previous_command.error
-    async def previous_command_error(self, ctx, exc):
 
         if isinstance(exc, QueueIsEmpty):
             await ctx.send("Skip could not be executed as the queue is currently empty")
         elif isinstance(exc, NoPreviousTrack):
             await ctx.send("There are no previous tracks in the queue.")
+
+    @commands.command(name="shuffle")
+    async def shuffle_command(self, ctx):
+        player = self.get_player(ctx)
+        player.queue.shuffle()
+        await ctx.send("Queue shuffled.")
+
+    @shuffle_command.error
+    async def shuffle_command_error(self, ctx, exc):
+        if isinstance(exc, QueueIsEmpty):
+            await ctx.send("The queue could not be shuffled as it is currently empty.")
+
 
     @commands.command(name="queue")
     async def queue_command(self, ctx, show: t.Optional[int] = 10):
