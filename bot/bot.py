@@ -7,11 +7,7 @@ from discord.ext import commands
 class Musicbot(commands.Bot):
     def __init__(self):
         self._cogs = [p.stem for p in Path(".").glob("./bot/cogs/*.py")]
-        super().__init__(
-            command_prefix=self.prefix,
-            case_insensitive=True,
-            intents=discord.Intents.all()
-        ) # case_insensitive=True means play and Play are the same thing
+        super().__init__(command_prefix=self.prefix, case_insensitive=True)
 
     def setup(self):
         print("Running setup...")
@@ -47,12 +43,12 @@ class Musicbot(commands.Bot):
 
     async def on_disconnect(self):
         print("Bot disconnected.")
-    
-    # async def on_error(self, err, *args, **kwargs):
-    #     raise
 
-    # async def on_command_error(self, ctx, exc):
-    #     raise getattr(exc, "original", exc)
+    async def on_error(self, err, *args, **kwargs):
+        raise
+
+    async def on_command_error(self, ctx, exc):
+        raise getattr(exc, "original", exc)
 
     async def on_ready(self):
         self.client_id = (await self.application_info()).id
