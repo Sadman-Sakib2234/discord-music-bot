@@ -1,6 +1,5 @@
 import asyncio
 import datetime as dt
-import enum
 import random
 import re
 import typing as t
@@ -13,8 +12,6 @@ from discord.ext import commands
 
 URL_REGEX = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
 LYRICS_URL = "https://some-random-api.ml/lyrics?title="
-HZ_BANDS = (20, 40, 63, 100, 150, 250, 400, 450, 630, 1000, 1600, 2500, 4000, 10000, 16000)
-TIME_REGEX = r"([0-9]{1,2})[:ms](([0-9]{1,2})s?)?"
 OPTIONS = {
     "1️⃣": 0,
     "2⃣": 1,
@@ -22,8 +19,6 @@ OPTIONS = {
     "4⃣": 3,
     "5⃣": 4,
 }
-
-
 class AlreadyConnectedToChannel(commands.CommandError):
     pass
 
@@ -39,7 +34,6 @@ class QueueIsEmpty(commands.CommandError):
 class NoTracksFound(commands.CommandError):
     pass
 
-
 class PlayerIsAlreadyPaused(commands.CommandError):
     pass
 
@@ -48,13 +42,16 @@ class NoMoreTracks(commands.CommandError):
     pass
 
 
-class NoPreviousTracks(commands.CommandError):
+class NoPreviousTrack(commands.CommandError):
     pass
 
 
-class InvalidRepeatMode(commands.CommandError):
+class PlayerIsAlreadyPlaying(commands.CommandError):
     pass
 
+
+class InvalidRepeatMethod(commands.CommandError):
+    pass
 
 class VolumeTooLow(commands.CommandError):
     pass
@@ -76,26 +73,11 @@ class NoLyricsFound(commands.CommandError):
     pass
 
 
-class InvalidEQPreset(commands.CommandError):
-    pass
-
-
-class NonExistentEQBand(commands.CommandError):
-    pass
-
-
-class EQGainOutOfBounds(commands.CommandError):
-    pass
-
-
-class InvalidTimeString(commands.CommandError):
-    pass
-
 
 class RepeatMode(Enum):
     NONE = 0
-    ONE = 1
-    ALL = 2
+    ONE  = 1
+    ALL  = 2
 
 
 class Queue:
@@ -173,18 +155,14 @@ class Queue:
     def empty(self):
         self._queue.clear()
         self.position = 0
-
-
 class Player(wavelink.Player):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.queue = Queue()
-        self.eq_levels = [0.] * 15
 
     async def connect(self, ctx, channel=None):
         if self.is_connected:
             raise AlreadyConnectedToChannel
-
         if (channel := getattr(ctx.author.voice, "channel", channel)) is None:
             raise NoVoiceChannel
 
@@ -196,7 +174,7 @@ class Player(wavelink.Player):
             await self.destroy()
         except KeyError:
             pass
-
+    
     async def add_tracks(self, ctx, tracks):
         if not tracks:
             raise NoTracksFound
@@ -262,7 +240,6 @@ class Player(wavelink.Player):
     async def repeat_track(self):
         await self.play(self.queue.current_track)
 
-
 class Music(commands.Cog, wavelink.WavelinkMixin):
     def __init__(self, bot):
         self.bot = bot
@@ -276,8 +253,8 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
                 await self.get_player(member.guild).teardown()
 
     @wavelink.WavelinkMixin.listener()
-    async def on_node_ready(self, node):
-        print(f" Wavelink node `{node.identifier}` ready.")
+    async def on_node_reply(self, node):
+        print(f"Wavelink node `{node.identifier}` ready.")
 
     @wavelink.WavelinkMixin.listener("on_track_stuck")
     @wavelink.WavelinkMixin.listener("on_track_end")
@@ -290,9 +267,8 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
 
     async def cog_check(self, ctx):
         if isinstance(ctx.channel, discord.DMChannel):
-            await ctx.send("Music commands are not available in DMs.")
+            await ctx.send("Music commands are not available in dms.")
             return False
-
         return True
 
     async def start_nodes(self):
@@ -311,7 +287,7 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
 
         for node in nodes.values():
             await self.wavelink.initiate_node(**node)
-
+    
     def get_player(self, obj):
         if isinstance(obj, commands.Context):
             return self.wavelink.get_player(obj.guild.id, cls=Player, context=obj)
@@ -327,58 +303,59 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
     @connect_command.error
     async def connect_command_error(self, ctx, exc):
         if isinstance(exc, AlreadyConnectedToChannel):
-            await ctx.send("Already connected to a voice channel.")
+            await ctx.send("Aleready Connected to a voice chanel")
         elif isinstance(exc, NoVoiceChannel):
-            await ctx.send("No suitable voice channel was provided.")
-
+            await ctx.send("No suiteable channel was provided.")
+    
     @commands.command(name="disconnect", aliases=["leave"])
     async def disconnect_command(self, ctx):
         player = self.get_player(ctx)
         await player.teardown()
         await ctx.send("Disconnected.")
-
+        
     @commands.command(name="play")
     async def play_command(self, ctx, *, query: t.Optional[str]):
         player = self.get_player(ctx)
 
         if not player.is_connected:
             await player.connect(ctx)
-
+        
         if query is None:
             if player.queue.is_empty:
                 raise QueueIsEmpty
-
+            
             await player.set_pause(False)
             await ctx.send("Playback resumed.")
-
         else:
             query = query.strip("<>")
             if not re.match(URL_REGEX, query):
                 query = f"ytsearch:{query}"
-
+            # find the song we need
             await player.add_tracks(ctx, await self.wavelink.get_tracks(query))
 
     @play_command.error
     async def play_command_error(self, ctx, exc):
-        if isinstance(exc, QueueIsEmpty):
-            await ctx.send("No songs to play as the queue is empty.")
+        if isinstance(exc, PlayerIsAlreadyPlaying):
+            await ctx.send("Player is already playing.")
+        elif isinstance(exc, QueueIsEmpty):
+            await ctx.send("No songs to play as queue is empty.")
         elif isinstance(exc, NoVoiceChannel):
-            await ctx.send("No suitable voice channel was provided.")
-
+            await ctx.send("No suiteable channel was provided.")
+    
     @commands.command(name="pause")
     async def pause_command(self, ctx):
         player = self.get_player(ctx)
 
         if player.is_paused:
             raise PlayerIsAlreadyPaused
-
+        
         await player.set_pause(True)
         await ctx.send("Playback paused.")
 
     @pause_command.error
     async def pause_command_error(self, ctx, exc):
         if isinstance(exc, PlayerIsAlreadyPaused):
-            await ctx.send("Already paused.")
+            await ctx.send("Playback is already paused")
 
     @commands.command(name="stop")
     async def stop_command(self, ctx):
@@ -409,7 +386,7 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
         player = self.get_player(ctx)
 
         if not player.queue.history:
-            raise NoPreviousTracks
+            raise NoPreviousTrack
 
         player.queue.position -= 2
         await player.stop()
@@ -417,9 +394,10 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
 
     @previous_command.error
     async def previous_command_error(self, ctx, exc):
+
         if isinstance(exc, QueueIsEmpty):
-            await ctx.send("This could not be executed as the queue is currently empty.")
-        elif isinstance(exc, NoPreviousTracks):
+            await ctx.send("Skip could not be executed as the queue is currently empty")
+        elif isinstance(exc, NoPreviousTrack):
             await ctx.send("There are no previous tracks in the queue.")
 
     @commands.command(name="shuffle")
@@ -436,7 +414,7 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
     @commands.command(name="repeat")
     async def repeat_command(self, ctx, mode: str):
         if mode not in ("none", "1", "all"):
-            raise InvalidRepeatMode
+            raise InvalidRepeatMethod
 
         player = self.get_player(ctx)
         player.queue.set_repeat_mode(mode)
@@ -476,7 +454,7 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
         if isinstance(exc, QueueIsEmpty):
             await ctx.send("The queue is currently empty.")
 
-    # Requests -----------------------------------------------------------------
+    # groovy premium features code
 
     @commands.group(name="volume", invoke_without_command=True)
     async def volume_group(self, ctx, volume: int):
@@ -558,136 +536,6 @@ class Music(commands.Cog, wavelink.WavelinkMixin):
         if isinstance(exc, NoLyricsFound):
             await ctx.send("No lyrics could be found.")
 
-    @commands.command(name="eq")
-    async def eq_command(self, ctx, preset: str):
-        player = self.get_player(ctx)
-
-        eq = getattr(wavelink.eqs.Equalizer, preset, None)
-        if not eq:
-            raise InvalidEQPreset
-
-        await player.set_eq(eq())
-        await ctx.send(f"Equaliser adjusted to the {preset} preset.")
-
-    @eq_command.error
-    async def eq_command_error(self, ctx, exc):
-        if isinstance(exc, InvalidEQPreset):
-            await ctx.send("The EQ preset must be either 'flat', 'boost', 'metal', or 'piano'.")
-
-    @commands.command(name="adveq", aliases=["aeq"])
-    async def adveq_command(self, ctx, band: int, gain: float):
-        player = self.get_player(ctx)
-
-        if not 1 <= band <= 15 and band not in HZ_BANDS:
-            raise NonExistentEQBand
-
-        if band > 15:
-            band = HZ_BANDS.index(band) + 1
-
-        if abs(gain) > 10:
-            raise EQGainOutOfBounds
-
-        player.eq_levels[band - 1] = gain / 10
-        eq = wavelink.eqs.Equalizer(levels=[(i, gain) for i, gain in enumerate(player.eq_levels)])
-        await player.set_eq(eq)
-        await ctx.send("Equaliser adjusted.")
-
-    @adveq_command.error
-    async def adveq_command_error(self, ctx, exc):
-        if isinstance(exc, NonExistentEQBand):
-            await ctx.send(
-                "This is a 15 band equaliser -- the band number should be between 1 and 15, or one of the following "
-                "frequencies: " + ", ".join(str(b) for b in HZ_BANDS)
-            )
-        elif isinstance(exc, EQGainOutOfBounds):
-            await ctx.send("The EQ gain for any band should be between 10 dB and -10 dB.")
-
-    @commands.command(name="playing", aliases=["np"])
-    async def playing_command(self, ctx):
-        player = self.get_player(ctx)
-
-        if not player.is_playing:
-            raise PlayerIsAlreadyPaused
-
-        embed = discord.Embed(
-            title="Now playing",
-            colour=ctx.author.colour,
-            timestamp=dt.datetime.utcnow(),
-        )
-        embed.set_author(name="Playback Information")
-        embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-        embed.add_field(name="Track title", value=player.queue.current_track.title, inline=False)
-        embed.add_field(name="Artist", value=player.queue.current_track.author, inline=False)
-
-        position = divmod(player.position, 60000)
-        length = divmod(player.queue.current_track.length, 60000)
-        embed.add_field(
-            name="Position",
-            value=f"{int(position[0])}:{round(position[1]/1000):02}/{int(length[0])}:{round(length[1]/1000):02}",
-            inline=False
-        )
-
-        await ctx.send(embed=embed)
-
-    @playing_command.error
-    async def playing_command_error(self, ctx, exc):
-        if isinstance(exc, PlayerIsAlreadyPaused):
-            await ctx.send("There is no track currently playing.")
-
-    @commands.command(name="skipto", aliases=["playindex"])
-    async def skipto_command(self, ctx, index: int):
-        player = self.get_player(ctx)
-
-        if player.queue.is_empty:
-            raise QueueIsEmpty
-
-        if not 0 <= index <= player.queue.length:
-            raise NoMoreTracks
-
-        player.queue.position = index - 2
-        await player.stop()
-        await ctx.send(f"Playing track in position {index}.")
-
-    @skipto_command.error
-    async def skipto_command_error(self, ctx, exc):
-        if isinstance(exc, QueueIsEmpty):
-            await ctx.send("There are no tracks in the queue.")
-        elif isinstance(exc, NoMoreTracks):
-            await ctx.send("That index is out of the bounds of the queue.")
-
-    @commands.command(name="restart")
-    async def restart_command(self, ctx):
-        player = self.get_player(ctx)
-
-        if player.queue.is_empty:
-            raise QueueIsEmpty
-
-        await player.seek(0)
-        await ctx.send("Track restarted.")
-
-    @restart_command.error
-    async def restart_command_error(self, ctx, exc):
-        if isinstance(exc, QueueIsEmpty):
-            await ctx.send("There are no tracks in the queue.")
-
-    @commands.command(name="seek")
-    async def seek_command(self, ctx, position: str):
-        player = self.get_player(ctx)
-
-        if player.queue.is_empty:
-            raise QueueIsEmpty
-
-        if not (match := re.match(TIME_REGEX, position)):
-            raise InvalidTimeString
-
-        if match.group(3):
-            secs = (int(match.group(1)) * 60) + (int(match.group(3)))
-        else:
-            secs = int(match.group(1))
-
-        await player.seek(secs * 1000)
-        await ctx.send("Seeked.")
-
-
+  
 def setup(bot):
     bot.add_cog(Music(bot))
