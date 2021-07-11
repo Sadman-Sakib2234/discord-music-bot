@@ -19,4 +19,6 @@ inco is an opensource music bot written in python. it can play music give lyrics
 | resume the song | +play |
 | shuffle the queue | +shuffle |
 | show the current song playing | +playing |
+| increase or decrease volume | +volume < volume % > |
+| lyrics of the song | +lyrics |
 | to see more commands | +help |
